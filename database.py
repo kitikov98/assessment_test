@@ -20,24 +20,25 @@ class Database:
     def create_tables(self):
         self.connection.execute('''CREATE TABLE IF NOT EXISTS lots (id INTEGER PRIMARY KEY,
         start_price INTEGER, trader_link TEXT, geolocation TEXT, description TEXT, additional_information BLOB,
-        file_name TEXT, time_start DATETIME, time_finish DATETIME, type TEXT, status text)''')
-
-        self.connection.execute('''CREATE TABLE IF NOT EXISTS pic (id INTEGER PRIMARY KEY, pic BLOB, lot_id INTEGER)''')
+        file_name TEXT, time_start DATETIME, time_finish DATETIME, type TEXT,
+        status text, pic BLOB, message_id INTEGER)''')
 
         self.connection.execute('''CREATE TABLE IF NOT EXISTS admin (id INTEGER PRIMARY KEY, tg_id INTEGER,
          rights INTEGER, balance INTEGER, strike_status INTEGER)''')
+
+        self.connection.execute('''CREATE TABLE IF NOT EXISTS reports (id INTEGER PRIMARY KEY, admin_id INTEGER,
+                 user_id INTEGER, status TEXT, description TEXT, relationship TEXT)''')
+
+        self.connection.execute('''CREATE TABLE IF NOT EXISTS user (id INTEGER PRIMARY KEY, tg_id INTEGER,
+                 balance INTEGER, number_of_payments INTEGER, status_auto_bid BOOL, strike_status INTEGER)''')
 
         self.connection.commit()
 
     def add_lots(self, list_info):
         with self.connection:
             self.connection.execute(f"""INSERT INTO lots (start_price, trader_link, geolocation, description,
-             additional_information, file_name, time_start, time_finish, type, status)
-            VALUES(?,?,?,?,?,?,?,?,?,?)""", list_info)
-
-    def add_pic(self, pic, lot_id):
-        with self.connection:
-            self.connection.execute(f"""INSERT INTO pic (pic, lot_id) VALUES(?,?)""", (pic, lot_id))
+             additional_information, file_name, time_start, time_finish, type, status, pic)
+            VALUES(?,?,?,?,?,?,?,?,?,?,?)""", list_info)
 
     def add_admin(self, tg_id):
         with self.connection:

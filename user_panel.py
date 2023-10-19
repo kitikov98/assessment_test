@@ -54,6 +54,10 @@ def query_handler(call):
         bot.edit_message_text("Какой-то текст", call.message.chat.id, call.message.message_id, reply_markup=menu_1)
 
 
+    # elif flag == 'D':
+    #     msg = bot.edit_message_text('Введите отзыв', call.message.chat.id, call.message.message_id)
+    #     bot.register_next_step_handler(msg, strike, data, call.message.chat.id, 'adm')
+
 def user_panel_run():
     print('ready')
     bot.polling()
