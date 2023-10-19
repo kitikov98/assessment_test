@@ -24,6 +24,9 @@ class Database:
 
         self.connection.execute('''CREATE TABLE IF NOT EXISTS pic (id INTEGER PRIMARY KEY, pic BLOB, lot_id INTEGER)''')
 
+        self.connection.execute('''CREATE TABLE IF NOT EXISTS admin (id INTEGER PRIMARY KEY, tg_id INTEGER,
+         rights INTEGER, balance INTEGER, strike_status INTEGER)''')
+
         self.connection.commit()
 
     def add_lots(self, list_info):
@@ -36,7 +39,14 @@ class Database:
         with self.connection:
             self.connection.execute(f"""INSERT INTO pic (pic, lot_id) VALUES(?,?)""", (pic, lot_id))
 
+    def add_admin(self, tg_id):
+        with self.connection:
+            self.connection.execute(f"""INSERT INTO admin (tg_id, rights, balance, strike_status)
+             VALUES(?,?,?,?)""", (tg_id, 0, 0, 0))
 
+    def super_admin_init(self, tg_id):
+        with self.connection:
+            self.connection.execute(f"""UPDATE admin SET rights = 3 WHERE tg_id = {tg_id}""")
 
 
 db = Database('auction.db')
