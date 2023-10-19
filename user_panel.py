@@ -13,7 +13,7 @@ tg_group = text['tg_group']
 token = text['user_panel']
 bot = telebot.TeleBot(token)
 
-user_menu = ['Мои аукционы', 'Розыгрыш', 'Топ пользователей', 'Правила', 'Статистика', 'Помощь']
+user_menu = ['Мои аукционы', 'Розыгрыш', 'Топ пользователей', 'Правила', 'Статистика', 'Помощь', 'Пожаловаться']
 menu_1 = InlineKeyboardMarkup()
 for item in user_menu:
     menu_1.add(InlineKeyboardButton(item, callback_data='A'+item))
