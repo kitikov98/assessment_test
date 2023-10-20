@@ -72,7 +72,7 @@ def colage(images):
 def discription_text(list1):
     text = f"""
 Начальная стоимость: {list1[1]}
-id продавца: @{list1[2]}
+id продавца: tg://openmessage?user_id={list1[2]}
 местонахождение: {list1[3]}
 описание: {list1[4]}
 время начало торгов: {list1[7]}
@@ -137,7 +137,7 @@ def price(message):
         list_to_db.append(message.text)
         msg = bot.send_message(message.chat.id, 'Начальная стоимость принята, введите местонахождение')
         bot.register_next_step_handler(msg, geolocation)
-        list_to_db.append(message.from_user.username)  # id продавца
+        list_to_db.append(message.from_user.id)  # id продавца
 
 
 def geolocation(message):
@@ -493,8 +493,8 @@ def query_handler(call):
                 bot.send_message(call.message.chat.id, 'Аукцион скоро запустится', reply_markup=f_menu)
         elif data[-6:] == 'refuse':
             lot_id = data.replace('refuse', '')
-            # with db.connection:
-            #     db.connection.execute(f'UPDATE lots SET status = "отменен" WHERE id = {lot_id}')
+            with db.connection:
+                db.connection.execute(f'UPDATE lots SET status = "отменен" WHERE id = {lot_id}')
             f_menu.add(InlineKeyboardButton('back', callback_data='Bback'))
             bot.send_message(call.message.chat.id, 'Лот отменен', reply_markup=f_menu)
 
@@ -591,6 +591,104 @@ def query_handler(call):
                 db.connection.execute(f'UPDATE reports SET status ="отклонен" WHERE id = {report_id}')
             i_menu.add(InlineKeyboardButton('back', callback_data='Bback'))
             bot.send_message(call.message.chat.id, 'Отзыв отклонен', reply_markup=i_menu)
+
+    elif flag == 'Y':
+        with db.connection:
+            lots = db.connection.execute(f'SELECT * FROM lots WHERE status ="активный"').fetchall()
+        if type(lots) == tuple:
+            lots = [lots]
+        if data[0] == '>':
+            coord = int(data[1]) + 1
+            if coord == (len(lots) - 1):
+                d_menu = InlineKeyboardMarkup()
+                d_menu.add(InlineKeyboardButton('<', callback_data="Y" + '<' + str(coord - 1) + '.' + str(
+                    lots[coord - 1][0])),
+                           InlineKeyboardButton('back', callback_data='Bback'))
+                d_menu.add(InlineKeyboardButton('Удалить', callback_data="Y" + 'a' + str(lots[coord][0])))
+                bot.edit_message_text("Лот №  " + str(lots[coord][0]), call.message.chat.id,
+                                      call.message.message_id, reply_markup=d_menu)
+
+            elif coord < len(lots):
+                d_menu = InlineKeyboardMarkup()
+                d_menu.add(InlineKeyboardButton('<', callback_data="Y" + '<' + str(coord - 1) + '.' + str(
+                    lots[coord - 1][0])),
+                           InlineKeyboardButton('back', callback_data='Bback'),
+                           InlineKeyboardButton('>',
+                                                callback_data="Y" + '>' + str(coord) + '.' + str(
+                                                    lots[coord][0])))
+                d_menu.add(InlineKeyboardButton('Удалить', callback_data="Y" + 'a' + str(lots[coord][0])))
+                bot.edit_message_text("Лот №  " + str(lots[coord][0]), call.message.chat.id,
+                                      call.message.message_id, reply_markup=d_menu)
+        elif data[0] == '<':
+            coord = int(data[1])
+            if coord == 0:
+                d_menu = InlineKeyboardMarkup()
+                d_menu.add(InlineKeyboardButton('back', callback_data='Bback'),
+                           InlineKeyboardButton('>',
+                                                callback_data="Y" + '>' + str(coord) + '.' + str(
+                                                    lots[coord][0])))
+                d_menu.add(InlineKeyboardButton('Удалить', callback_data="Y" + 'a' + str(lots[0][0])))
+                bot.edit_message_text(
+                    "Лот №  " + str(lots[coord][0]),
+                    call.message.chat.id, call.message.message_id, reply_markup=d_menu)
+
+            elif coord < len(lots):
+                d_menu = InlineKeyboardMarkup()
+                d_menu.add(InlineKeyboardButton('<', callback_data="Y" + '<' + str(coord - 1) + '.' + str(
+                    lots[coord - 1][0])),
+                           InlineKeyboardButton('back', callback_data='Bback'),
+                           InlineKeyboardButton('>',
+                                                callback_data="Y" + '>' + str(coord) + '.' + str(
+                                                    lots[coord][0])))
+                d_menu.add(InlineKeyboardButton('Удалить', callback_data="Y" + 'a' + str(lots[coord][0])))
+                bot.edit_message_text("Лот №  " + str(lots[coord][0]), call.message.chat.id,
+                                      call.message.message_id, reply_markup=d_menu)
+        elif data[0] == 'a':
+            data = data.split('a')[1]
+            print(data)
+            lot_menu = InlineKeyboardMarkup()
+            lot_menu.add(InlineKeyboardButton('удалить', callback_data='X' + str(data) + 'accept'),
+                         InlineKeyboardButton('отмена', callback_data='Bback'))
+            bot.edit_message_text("Точно удаляемя Лот №  " + str(data)+'?', call.message.chat.id,
+                                  call.message.message_id, reply_markup=lot_menu)
+
+    elif flag == 'X':
+        f_menu = InlineKeyboardMarkup()
+        if data[-6:] == 'accept':
+            lot_id = data.replace('accept', '')
+            with db.connection:
+                del_info = db.connection.execute(f'SELECT message_id, trader_link, start_price FROM lots WHERE id ={lot_id}').fetchone()
+                db.connection.execute(f'DELETE FROM lots WHERE id = {lot_id}')
+                db.connection.execute(f'UPDATE admin SET balance = balance - 0.05*({del_info[2]}) WHERE tg_id = {del_info[1]}')
+            bot.delete_message(tg_group, message_id=del_info[0])
+            bot.send_message(call.message.chat.id, 'Запись удалена', reply_markup=f_menu)
+
+    if data == "Удаление лота":
+        lots_menu = InlineKeyboardMarkup()
+        with db.connection:
+            lots = db.connection.execute(f'SELECT * FROM lots WHERE status ="активный"').fetchall()
+        if type(lots) == tuple:
+            lots = [lots]
+        if lots != []:
+            if len(lots) == 1:
+                lots_menu.add(InlineKeyboardButton('back', callback_data='Bback'))
+                lots_menu.add(
+                    InlineKeyboardButton('Удалить', callback_data="Y" + 'a' + str(lots[0][0])))
+                bot.edit_message_text(
+                    "Лот № " + str(lots[0][0]), call.message.chat.id, call.message.message_id, reply_markup=lots_menu)
+            else:
+                lots_menu.add(InlineKeyboardButton('back', callback_data='Bback'),
+                              InlineKeyboardButton('>', callback_data="Y" + '>' + str(0) + '.' + str(
+                                  lots[0][0])))
+                lots_menu.add(
+                    InlineKeyboardButton('Удалить', callback_data="Y" + 'a' + str(lots[0][0])))
+                bot.edit_message_text("Лот № " + str(lots[0][0]), call.message.chat.id,
+                                      call.message.message_id, reply_markup=lots_menu)
+        else:
+            lots_menu.add(InlineKeyboardButton('back', callback_data='Bback'))
+            bot.edit_message_text("Лотов на расмотрении нет", call.message.chat.id,
+                                  call.message.message_id, reply_markup=lots_menu)
+
 
     if data == "Одобрение лота":
         lots_menu = InlineKeyboardMarkup()
