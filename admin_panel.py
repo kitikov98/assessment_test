@@ -17,10 +17,8 @@ token = text['admin_panel']
 
 bot = telebot.TeleBot(token)
 
-
-
 menu_1 = ["Создать_лот", "Баланс", "Удаление лота", "Пожаловаться"]
-menu_2 = ["Одобрение лота", "Отзыв пользователей", "Страйки админов"]
+menu_2 = ["Одобрение лота", "Жалобы"]
 menu_3 = [*menu_1, *menu_2, 'Изменение админов', 'Начисление баланса']
 # Клавиатура для администраторов
 admin_markup = InlineKeyboardMarkup()
@@ -40,10 +38,12 @@ dict_murkup = {1: admin_markup, 2: admin_markup2, 3: super_admin_markup}
 list_to_db = []
 photos_list = []
 
+
 def convert_to_binary_data(filename):  # filename - название папки с картинками
     with open(filename, 'rb') as file:
         blob_data = b64encode(file.read())
     return blob_data
+
 
 def convert_to_pic(str1):
     image = BytesIO(b64decode(str1))
@@ -194,7 +194,7 @@ def finish_time(message):
         list_lots_type = ['Ювелирный', 'Историч. ценный', 'Стандартный']
         lots_menu = InlineKeyboardMarkup()
         for item in list_lots_type:
-            lots_menu.add(InlineKeyboardButton(item, callback_data='t' + item))
+            lots_menu.add(InlineKeyboardButton(item, callback_data='T' + item))
         msg = bot.send_message(message.chat.id, 'Окончание торгов принято, выберите тип лота', reply_markup=lots_menu)
 
 
@@ -248,7 +248,7 @@ def query_handler(call):
         if data == 'back':
             with db.connection:
                 rights = \
-                db.connection.execute(f'SELECT rights FROM admin WHERE tg_id ={call.message.chat.id}').fetchone()[0]
+                    db.connection.execute(f'SELECT rights FROM admin WHERE tg_id ={call.message.chat.id}').fetchone()[0]
             bot.edit_message_text("Панель администратора", call.message.chat.id,
                                   call.message.message_id, reply_markup=dict_murkup[rights])
 
@@ -264,11 +264,13 @@ def query_handler(call):
                                   text='Осталось времени ' + str(delta)[-8:-6] + ' часов ' + str(delta)[
                                                                                              -5:-3] + ' минут ' +
                                        str(delta)[-2:] + ' секунд')
+
     elif flag == 'i':
         bot.answer_callback_query(callback_query_id=call.id,
                                   text="""1. Делаем ставку и чёто-там, не забудь поменять""",
                                   show_alert=True)
-    elif flag == 't':
+
+    elif flag == 'T':
         list_to_db.append(data)
         list_to_db.append('на рассмотрении')
         collage = colage([photos_list])
@@ -341,12 +343,6 @@ def query_handler(call):
                                     call.message.message_id)
         bot.register_next_step_handler(msg, add_money, data)
 
-
-
-
-
-
-
     elif flag == 'D':
         with db.connection:
             users = db.connection.execute(f'SELECT tg_id FROM user').fetchall()
@@ -401,12 +397,8 @@ def query_handler(call):
                                       call.message.message_id, reply_markup=d_menu)
         elif data[0] == 'a':
             data = data.split('a')[1]
-            print(data)
             msg = bot.send_message(call.message.chat.id, 'Введите отзыв на пользователя')
             bot.register_next_step_handler(msg, strike, call.message.chat.id, data, 'adm')
-
-
-
 
     elif flag == 'F':
         with db.connection:
@@ -474,8 +466,6 @@ def query_handler(call):
             pict = convert_to_pic(lot_disc[11])
             bot.send_photo(call.message.chat.id, pict, caption=text_1, reply_markup=lot_menu)
 
-
-
     elif flag == 'G':
         f_menu = InlineKeyboardMarkup()
         if data[-6:] == 'accept':
@@ -492,7 +482,8 @@ def query_handler(call):
                 f_menu.add(InlineKeyboardButton('back', callback_data='Bback'))
                 bot.send_message(call.message.chat.id, 'Аукцион запущен', reply_markup=f_menu)
                 menu_send = InlineKeyboardMarkup()
-                menu_send.add(InlineKeyboardButton(text="учавствовать", url=f"https://t.me/kitikov98_study_bot?start={lot_id}"))
+                menu_send.add(
+                    InlineKeyboardButton(text="учавствовать", url=f"https://t.me/kitikov98_study_bot?start={lot_id}"))
                 menu_send.add(InlineKeyboardButton('время', callback_data='t' + '0'),
                               InlineKeyboardButton('info', callback_data='i' + '0'))
                 msg = bot.send_photo(tg_group, pict, caption=text_1, reply_markup=menu_send)
@@ -506,6 +497,100 @@ def query_handler(call):
             #     db.connection.execute(f'UPDATE lots SET status = "отменен" WHERE id = {lot_id}')
             f_menu.add(InlineKeyboardButton('back', callback_data='Bback'))
             bot.send_message(call.message.chat.id, 'Лот отменен', reply_markup=f_menu)
+
+    elif flag == 'R':
+        with db.connection:
+            reports = db.connection.execute(f'SELECT * FROM reports WHERE status ="на рассмотрении"').fetchall()
+        report_menu = InlineKeyboardMarkup()
+        if type(reports) == tuple:
+            reports = [reports]
+        if data[0] == '>':
+            coord = int(data[1]) + 1
+            if coord == (len(reports) - 1):
+                report_menu = InlineKeyboardMarkup()
+                report_menu.add(InlineKeyboardButton('<', callback_data="R" + '<' + str(coord - 1) + '.' + str(
+                    reports[coord - 1][0])),
+                                InlineKeyboardButton('back', callback_data='Bback'))
+                report_menu.add(InlineKeyboardButton('Прсмотр', callback_data="R" + 'a' + str(reports[coord][0])))
+                bot.edit_message_text("id администратора " + str(reports[coord][1]) + " id пользователя "
+                                      + str(reports[coord][2]) + '\n' + 'отношение ' + str(reports[coord][5]),
+                                      call.message.chat.id,
+                                      call.message.message_id, reply_markup=report_menu)
+
+            elif coord < len(reports):
+                report_menu = InlineKeyboardMarkup()
+                report_menu.add(InlineKeyboardButton('<', callback_data="R" + '<' + str(coord - 1) + '.' + str(
+                    reports[coord - 1][0])),
+                                InlineKeyboardButton('back', callback_data='Bback'),
+                                InlineKeyboardButton('>',
+                                                     callback_data="R" + '>' + str(coord) + '.' + str(
+                                                         reports[coord][0])))
+                report_menu.add(InlineKeyboardButton('Прсмотр', callback_data="R" + 'a' + str(reports[coord][0])))
+                bot.edit_message_text("id администратора " + str(reports[coord][1]) + " id пользователя "
+                                      + str(reports[coord][2]) + '\n' + 'отношение ' + str(reports[coord][5]),
+                                      call.message.chat.id,
+                                      call.message.message_id, reply_markup=report_menu)
+        elif data[0] == '<':
+            coord = int(data[1])
+            if coord == 0:
+                report_menu = InlineKeyboardMarkup()
+                report_menu.add(InlineKeyboardButton('back', callback_data='Bback'),
+                                InlineKeyboardButton('>',
+                                                     callback_data="R" + '>' + str(coord) + '.' + str(
+                                                         reports[coord][0])))
+                report_menu.add(InlineKeyboardButton('Прсмотр', callback_data="R" + 'a' + str(reports[0][0])))
+                bot.edit_message_text("id администратора " + str(reports[coord][1]) + " id пользователя "
+                                      + str(reports[coord][2]) + '\n' + 'отношение ' + str(reports[coord][5]),
+                                      call.message.chat.id, call.message.message_id, reply_markup=report_menu)
+
+            elif coord < len(reports):
+                report_menu = InlineKeyboardMarkup()
+                report_menu.add(InlineKeyboardButton('<', callback_data="R" + '<' + str(coord - 1) + '.' + str(
+                    reports[coord - 1][0])),
+                                InlineKeyboardButton('back', callback_data='Bback'),
+                                InlineKeyboardButton('>',
+                                                     callback_data="R" + '>' + str(coord) + '.' + str(
+                                                         reports[coord][0])))
+                report_menu.add(InlineKeyboardButton('Прсмотр', callback_data="R" + 'a' + str(reports[coord][0])))
+                bot.edit_message_text("id администратора " + str(reports[coord][1]) + " id пользователя "
+                                      + str(reports[coord][2]) + '\n' + 'отношение ' + str(reports[coord][5]),
+                                      call.message.chat.id,
+                                      call.message.message_id,
+                                      reply_markup=report_menu)
+
+        elif data[0] == 'a':
+            data = data.split('a')[1]
+            with db.connection:
+                report = db.connection.execute(f'SELECT * FROM reports WHERE id = {data}').fetchone()
+            report_menu = InlineKeyboardMarkup()
+            report_menu.add(InlineKeyboardButton('принять', callback_data='I' + str(data) + 'accept'),
+                            InlineKeyboardButton('отклонить', callback_data='I' + str(data) + 'refuse'))
+            report_menu.add(InlineKeyboardButton('back', callback_data='Bback'))
+            bot.edit_message_text("id администратора " + str(report[1]) + " id пользователя "
+                                  + str(report[2]) + '\n' + 'отношение ' + str(report[5]) + '\n'
+                                  + 'Отзыв: ' + str(report[4]),
+                                  call.message.chat.id, call.message.message_id, reply_markup=report_menu)
+
+    elif flag == 'I':
+        i_menu = InlineKeyboardMarkup()
+        if data[-6:] == 'accept':
+            report_id = data.replace('accept', '')
+            with db.connection:
+                db.connection.execute(f'UPDATE reports SET status ="разрешен" WHERE id = {report_id}')
+                rel = db.connection.execute(
+                    f'SELECT relationship, user_id FROM reports WHERE id = {report_id}').fetchone()
+            if rel[0] == 'admin-to-user':
+                with db.connection:
+                    db.connection.execute(f'UPDATE user SET strike_status = strike_status+1 WHERE tg_id = {rel[1]}')
+            i_menu.add(InlineKeyboardButton('back', callback_data='Bback'))
+            bot.send_message('Отзыв принят', call.message.chat.id, call.message.message_id, reply_markup=i_menu)
+
+        elif data[-6:] == 'refuse':
+            report_id = data.replace('refuse', '')
+            with db.connection:
+                db.connection.execute(f'UPDATE reports SET status ="отклонен" WHERE id = {report_id}')
+            i_menu.add(InlineKeyboardButton('back', callback_data='Bback'))
+            bot.send_message(call.message.chat.id, 'Отзыв отклонен', reply_markup=i_menu)
 
     if data == "Одобрение лота":
         lots_menu = InlineKeyboardMarkup()
@@ -545,11 +630,12 @@ def query_handler(call):
                 admin_menu.add(
                     InlineKeyboardButton('Просмотр', callback_data="D" + 'a' + str(users[0][0])))
                 bot.edit_message_text(
-                    "id пользователя " + str(users[0][0]), call.message.chat.id, call.message.message_id, reply_markup=admin_menu)
+                    "id пользователя " + str(users[0][0]), call.message.chat.id, call.message.message_id,
+                    reply_markup=admin_menu)
             else:
                 admin_menu.add(InlineKeyboardButton('back', callback_data='Bback'),
-                              InlineKeyboardButton('>', callback_data="D" + '>' + str(0) + '.' + str(
-                                  users[0][0])))
+                               InlineKeyboardButton('>', callback_data="D" + '>' + str(0) + '.' + str(
+                                   users[0][0])))
                 admin_menu.add(
                     InlineKeyboardButton('Просмотр', callback_data="D" + 'a' + str(users[0][0])))
                 bot.edit_message_text("id пользователя " + str(users[0][0]), call.message.chat.id,
@@ -559,6 +645,34 @@ def query_handler(call):
             bot.edit_message_text("Нет пользователей", call.message.chat.id,
                                   call.message.message_id, reply_markup=admin_menu)
 
+    if data == 'Жалобы':
+        with db.connection:
+            reports = db.connection.execute(f'SELECT * FROM reports WHERE status ="на рассмотрении"').fetchall()
+        report_menu = InlineKeyboardMarkup()
+        if type(reports) == tuple:
+            reports = [reports]
+        if reports != []:
+            if len(reports) == 1:
+                report_menu.add(InlineKeyboardButton('back', callback_data='Bback'))
+                report_menu.add(
+                    InlineKeyboardButton('Просмотр', callback_data="R" + 'a' + str(reports[0][0])))
+                bot.edit_message_text(
+                    "id администратора " + str(reports[0][1]) + " id пользователя " + str(
+                        reports[0][2]) + '\n' + 'отношение ' + str(reports[0][5]),
+                    call.message.chat.id, call.message.message_id, reply_markup=report_menu)
+            else:
+                report_menu.add(InlineKeyboardButton('back', callback_data='Bback'),
+                                InlineKeyboardButton('>', callback_data="R" + '>' + str(0) + '.' + str(
+                                    reports[0][0])))
+                report_menu.add(
+                    InlineKeyboardButton('Просмотр', callback_data="R" + 'a' + str(reports[0][0])))
+                bot.edit_message_text("id администратора " + str(reports[0][1]) + " id пользователя " + str(
+                    reports[0][2]) + '\n' + 'отношение ' + str(reports[0][5]), call.message.chat.id,
+                                      call.message.message_id, reply_markup=report_menu)
+        else:
+            report_menu.add(InlineKeyboardButton('back', callback_data='Bback'))
+            bot.edit_message_text("Нет отзывов", call.message.chat.id,
+                                  call.message.message_id, reply_markup=report_menu)
 
     if data == 'Баланс':
         with db.connection:
