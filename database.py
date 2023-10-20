@@ -29,8 +29,11 @@ class Database:
         self.connection.execute('''CREATE TABLE IF NOT EXISTS reports (id INTEGER PRIMARY KEY, admin_id INTEGER,
                  user_id INTEGER, status TEXT, description TEXT, relationship TEXT)''')
 
-        self.connection.execute('''CREATE TABLE IF NOT EXISTS user (id INTEGER PRIMARY KEY, tg_id INTEGER,
+        self.connection.execute('''CREATE TABLE IF NOT EXISTS user (id INTEGER PRIMARY KEY, tg_id INTEGER UNIQUE,
                  balance INTEGER, number_of_payments INTEGER, status_auto_bid BOOL, strike_status INTEGER)''')
+
+        self.connection.execute('''CREATE TABLE IF NOT EXISTS bids (id INTEGER PRIMARY KEY, lot_id INTEGER,
+                         bid INTEGER, user_id INTEGER)''')
 
         self.connection.commit()
 

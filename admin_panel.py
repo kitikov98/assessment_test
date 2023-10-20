@@ -7,6 +7,10 @@ from PIL import Image
 from base64 import b64encode, b64decode
 from io import BytesIO
 from datetime import datetime, timedelta
+from docx.enum.text import WD_PARAGRAPH_ALIGNMENT
+from docx.enum.style import WD_STYLE_TYPE
+from docx.shared import Pt
+from docx import Document
 
 with open('keys.json', 'r', encoding='utf-8') as f:  # открыли файл с данными
     text = json.load(f)
@@ -37,6 +41,105 @@ dict_murkup = {1: admin_markup, 2: admin_markup2, 3: super_admin_markup}
 
 list_to_db = []
 photos_list = []
+
+
+def lots_bid():
+    with db.connection:
+        bids = db.connection.execute(
+            f'SELECT id, lot_id, MAX(bid) as max_bid, user_id FROM bids GROUP BY id').fetchall()
+    for bid in bids:
+        with db.connection:
+            tg_id = db.connection.execute(f'SELECT tg_id FROM user WHERE id = {bid[3]}').fetchone()[0]
+            lot = db.connection.execute(f'SELECT * FROM lots WHERE id = {bid[1]}').fetchone()
+        menu_send = InlineKeyboardMarkup()
+        menu_send.add(
+            InlineKeyboardButton(text="учавствовать", url=f"https://t.me/kitikov98_study_bot?start={bid[1]}"))
+        menu_send.add(InlineKeyboardButton('время', callback_data='t' + '0'),
+                      InlineKeyboardButton('info', callback_data='i' + '0'))
+        bot.edit_message_caption(discription_text(lot) + f'\n Максимальная ставка {bid[2]} \nПользователем {tg_id}',
+                                 chat_id=tg_group, message_id=lot[12], reply_markup=menu_send)
+    print('done')
+
+
+def gen_edo(owner_id, user_id, lot_id):
+    document = Document()
+    styles = document.styles
+    style = styles.add_style('Утверждающий', WD_STYLE_TYPE.PARAGRAPH)
+    style.font.name = 'Times New Roman'
+    style.font.size = Pt(14)
+    style1 = styles.add_style('Заголовки', WD_STYLE_TYPE.PARAGRAPH)
+    style1.font.name = 'Times New Roman'
+    style1.font.size = Pt(16)
+    style1.font.bold = True
+    paragraph0 = document.add_paragraph("Утверждаю", style='Заголовки')
+    paragraph0.paragraph_format.alignment = WD_PARAGRAPH_ALIGNMENT.RIGHT
+    paragraph1 = document.add_paragraph(
+        f""" Передача лота №
+От пользователя {owner_id}
+Пользователю {user_id}""", style='Утверждающий')
+    paragraph1.paragraph_format.alignment = WD_PARAGRAPH_ALIGNMENT.RIGHT
+    for x in range(4):
+        document.add_paragraph()
+    with db.connection:
+        lot_discr = db.connection.execute(f'SELECT description FROM lots WHERE id ={lot_id}')
+    paragraph2 = document.add_paragraph(f"{lot_discr}", style='Заголовки')
+    paragraph2.paragraph_format.alignment = WD_PARAGRAPH_ALIGNMENT.CENTER
+    document.add_paragraph()
+    document.add_paragraph(f'Отправитель ___{owner_id}__\n'
+                           f'Получатель _____{user_id}_______', style='Утверждающий')
+    document.save(f'Лот_№_{lot_id}.docx')
+    return document
+
+
+def start_auc():
+    try:
+        with db.connection:
+            lots = db.connection.execute(f'SELECT * FROM lots WHERE status="ожидание"').fetchall()
+        if type(lots) == tuple:
+            lots = [lots]
+        for lot in lots:
+            date_time_obj = datetime.strptime(lot[7], '%Y-%m-%d %H:%M:%S')
+            print(date_time_obj)
+            text_1 = discription_text(lot)
+            pict = convert_to_pic(lot[11])
+            if date_time_obj < datetime.now():
+                menu_send = InlineKeyboardMarkup()
+                menu_send.add(
+                    InlineKeyboardButton(text="учавствовать", url=f"https://t.me/kitikov98_study_bot?start={lot[0]}"))
+                menu_send.add(InlineKeyboardButton('время', callback_data='t' + '0'),
+                              InlineKeyboardButton('info', callback_data='i' + '0'))
+                msg = bot.send_photo(tg_group, pict, caption=text_1, reply_markup=menu_send)
+                print(msg)
+                with db.connection:
+                    db.connection.execute(f'UPDATE lots SET status ="активный" WHERE id ={lot[0]}')
+                    db.connection.execute(f'UPDATE lots SET message_id ={msg.id} WHERE id ={lot[0]}')
+    except:
+        pass
+
+
+def finish_auc():
+    with db.connection:
+        lots = db.connection.execute(f'SELECT * FROM lots WHERE status ="активный"').fetchall()
+        bids = db.connection.execute(f'SELECT * FROM bids WHERE').fetchall()
+    if type(lots) == tuple:
+        lots = [lots]
+    for lot in lots:
+        date_time_obj = datetime.strptime(lot[8], '%Y-%m-%d %H:%M:%S')
+        for bid in bids:
+            if bid[1] == lot[0]:
+                if date_time_obj > datetime.now():
+                    bot.edit_message_caption(discription_text(lot) + f'\nАукцион завершен',
+                                             chat_id=tg_group, message_id=lot[12])
+                    with db.connection:
+                        tg_id = db.connection.execute(f'SELECT tg_id FROM user WHERE id = {bid[3]}')
+                        db.connection.execute(f'UPDATE lots SET status ="завершен" WHERE id ={lot[0]}')
+                bot.send_message(tg_id, f'Вы выйграли слот № {lot[0]}')
+                bot.send_document(tg_id, gen_edo(lot[2], tg_id, lot[0]), caption='Сертификат собственности')
+            elif bid[1] != lot[0] and lot[10] == 'завершен':
+                pass
+            else:
+                with db.connection:
+                    db.connection.execute(f'UPDATE lots SET status ="на рассмотрении" WHERE id ={lot[0]}')
 
 
 def convert_to_binary_data(filename):  # filename - название папки с картинками
@@ -215,8 +318,8 @@ def start_admin_panel(message):
         lots = db.connection.execute(f'SELECT * FROM lots ORDER BY id DESC LIMIT 1').fetchone()
         # print(lots)
     for lot in lots:
-        file_obj = io.BytesIO(lot[6])
-        file_obj.name = lot[7]
+        file_obj = io.BytesIO(lot[5])
+        file_obj.name = lot[6]
         # text_1 = discription_text(lot)
         bot.send_document(message.chat.id, file_obj)
 
@@ -487,9 +590,12 @@ def query_handler(call):
                 menu_send.add(InlineKeyboardButton('время', callback_data='t' + '0'),
                               InlineKeyboardButton('info', callback_data='i' + '0'))
                 msg = bot.send_photo(tg_group, pict, caption=text_1, reply_markup=menu_send)
+                print(msg)
                 with db.connection:
                     db.connection.execute(f'UPDATE lots SET message_id ={msg.id} WHERE id ={lot_id}')
             else:
+                with db.connection:
+                    db.connection.execute(f'UPDATE lots SET status = "ожидание" WHERE id = {lot_id}')
                 bot.send_message(call.message.chat.id, 'Аукцион скоро запустится', reply_markup=f_menu)
         elif data[-6:] == 'refuse':
             lot_id = data.replace('refuse', '')
@@ -649,7 +755,7 @@ def query_handler(call):
             lot_menu = InlineKeyboardMarkup()
             lot_menu.add(InlineKeyboardButton('удалить', callback_data='X' + str(data) + 'accept'),
                          InlineKeyboardButton('отмена', callback_data='Bback'))
-            bot.edit_message_text("Точно удаляемя Лот №  " + str(data)+'?', call.message.chat.id,
+            bot.edit_message_text("Точно удаляемя Лот №  " + str(data) + '?', call.message.chat.id,
                                   call.message.message_id, reply_markup=lot_menu)
 
     elif flag == 'X':
@@ -657,9 +763,11 @@ def query_handler(call):
         if data[-6:] == 'accept':
             lot_id = data.replace('accept', '')
             with db.connection:
-                del_info = db.connection.execute(f'SELECT message_id, trader_link, start_price FROM lots WHERE id ={lot_id}').fetchone()
+                del_info = db.connection.execute(
+                    f'SELECT message_id, trader_link, start_price FROM lots WHERE id ={lot_id}').fetchone()
                 db.connection.execute(f'DELETE FROM lots WHERE id = {lot_id}')
-                db.connection.execute(f'UPDATE admin SET balance = balance - 0.05*({del_info[2]}) WHERE tg_id = {del_info[1]}')
+                db.connection.execute(
+                    f'UPDATE admin SET balance = balance - 0.05*({del_info[2]}) WHERE tg_id = {del_info[1]}')
             bot.delete_message(tg_group, message_id=del_info[0])
             bot.send_message(call.message.chat.id, 'Запись удалена', reply_markup=f_menu)
 
@@ -688,7 +796,6 @@ def query_handler(call):
             lots_menu.add(InlineKeyboardButton('back', callback_data='Bback'))
             bot.edit_message_text("Лотов на расмотрении нет", call.message.chat.id,
                                   call.message.message_id, reply_markup=lots_menu)
-
 
     if data == "Одобрение лота":
         lots_menu = InlineKeyboardMarkup()
