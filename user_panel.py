@@ -14,7 +14,8 @@ tg_group = text['tg_group']
 token = text['user_panel']
 bot = telebot.TeleBot(token)
 
-user_menu = ['Мои аукционы', 'Розыгрыш', 'Топ пользователей', 'Правила', 'Статистика', 'Помощь', 'Пожаловаться']
+user_menu = ['Мои аукционы', 'Розыгрыш', 'Топ пользователей', 'Правила', 'Статистика', 'Помощь', 'Пожаловаться',
+             'Баланс']
 user_info = {'Мои аукционы': "Нет активных аукционов",
              'Розыгрыш': "Пока розыгрышей не проводится",
              'Топ пользователей': "Сколько букв Ж в слове ЖОПА? В ЖОПЕ только вы",
@@ -60,16 +61,20 @@ id продавца: tg://openmessage?user_id={list1[2]}
 """
     return text
 
-# def other_bid():
-#
-#     bot.send_message()
+
+def strike(message, who, whom, role=None):
+    if role == 'user':
+        with db.connection:
+            db.connection.execute(f"""INSERT INTO reports (admin_id, user_id, status, description, relationship)
+             VALUES(?,?,?,?,?)""", (whom, who, 'на рассмотрении', message.text, 'user-to admin'))
+    bot.send_message(message.chat.id, 'Спасибо, ваш отзыв будет рассмотрен в ближайшее время')
 
 @bot.message_handler(commands=['start'])
 def start_admin_panel(message):
     try:
         with db.connection:
             db.connection.execute(f"""INSERT INTO user (tg_id, balance, number_of_payments,
-             status_auto_bid, strike_status) VALUES(?,?,?,?,?)""", (message.chat.id, 400,0,0,0))
+             status_auto_bid, strike_status) VALUES(?,?,?,?,?)""", (message.chat.id, 400, 0, 0, 0))
     except:
         pass
 
@@ -77,15 +82,16 @@ def start_admin_panel(message):
         with db.connection:
             lot = db.connection.execute(f'SELECT * FROM lots WHERE id={message.text.split(" ")[1]}').fetchone()
         lot_menu = InlineKeyboardMarkup()
-        lot_menu.add(InlineKeyboardButton('time', callback_data='t'+str(message.text.split(" ")[1])),
+        lot_menu.add(InlineKeyboardButton('time', callback_data='t' + str(message.text.split(" ")[1])),
                      InlineKeyboardButton('описание', callback_data='i'),
-                     InlineKeyboardButton('документы', callback_data='d'+str(message.text.split(" ")[1])))
-        lot_menu.add(InlineKeyboardButton('30 ₩', callback_data='p'+str(message.text.split(" ")[1])+'.30'),
-                     InlineKeyboardButton('50 ₩', callback_data='p'+str(message.text.split(" ")[1])+'.50'),
-                     InlineKeyboardButton('150 ₩', callback_data='p'+str(message.text.split(" ")[1])+'.150'))
-        bot.send_photo(message.chat.id, convert_to_pic(lot[11]), caption=f'{discription_text(lot)}', reply_markup=lot_menu)
+                     InlineKeyboardButton('документы', callback_data='d' + str(message.text.split(" ")[1])))
+        lot_menu.add(InlineKeyboardButton('30 ₩', callback_data='p' + str(message.text.split(" ")[1]) + '.30'),
+                     InlineKeyboardButton('50 ₩', callback_data='p' + str(message.text.split(" ")[1]) + '.50'),
+                     InlineKeyboardButton('150 ₩', callback_data='p' + str(message.text.split(" ")[1]) + '.150'))
+        bot.send_photo(message.chat.id, convert_to_pic(lot[11]), caption=f'{discription_text(lot)}',
+                       reply_markup=lot_menu)
     else:
-        bot.send_message(message.chat.id, 'Hi', reply_markup=menu_1)
+        bot.send_message(message.chat.id, 'Меню пользователя', reply_markup=menu_1)
 
 
 @bot.callback_query_handler(func=lambda call: True)
@@ -125,19 +131,47 @@ def query_handler(call):
             message_id = db.connection.execute(f'SELECT message_id FROM lots WHERE id={lot_id}').fetchone()[0]
             lots = db.connection.execute(f'SELECT * FROM lots WHERE id ={lot_id}').fetchone()
         print(message_id)
-        bot.send_message(call.message.chat.id, f'Ваша ставка в {int(lots[1])+bid} принята')
+        bot.send_message(call.message.chat.id, f'Ваша ставка в {int(lots[1]) + bid} принята')
         with db.connection:
             user_id = db.connection.execute(f'SELECT id FROM user WHERE tg_id = {call.message.chat.id}').fetchone()[0]
             db.connection.execute(f'INSERT INTO bids (lot_id, bid, user_id) VALUES (?,?,?)',
-                                  (lot_id, (int(lots[1])+bid), user_id))
-        # bot.edit_message_caption(discription_text(lots)+f'\nbid = {int(lots[1])+bid}', chat_id=tg_group,
-        #                          message_id=message_id)
-
+                                  (lot_id, (int(lots[1]) + bid), user_id))
 
     elif flag == 'A':
-        bot.edit_message_text(user_info[data], call.message.chat.id, call.message.message_id, reply_markup=menu_2)
+        if data == 'Баланс':
+            with db.connection:
+                user_balance = db.connection.execute(f"""SELECT balance FROM user 
+                WHERE tg_id = {call.message.chat.id}""").fetchone()[0]
+            bot.edit_message_text(f'Пользователь {call.message.chat.id} имеет баланс в {user_balance} золотох монет',
+                                  call.message.chat.id, call.message.message_id, reply_markup=menu_2)
+        elif data == 'Мои аукционы':
+            with db.connection:
+                user_id = db.connection.execute(f'SELECT id FROM user WHERE tg_id = {call.message.chat.id}').fetchone()[
+                    0]
+                bids = db.connection.execute(f'SELECT * FROM bids WHERE user_id ={user_id} ').fetchall()
+            if type(bids) == tuple:
+                bids = [bids]
+            text_bids = f'Пользователь {user_id} осуществляет торги:\n'
+            for bid in bids:
+                text_bids += f'Лот № {bid[1]} со ставкой в {bid[2]}\n'
+            bot.edit_message_text(text_bids, call.message.chat.id, call.message.message_id, reply_markup=menu_2)
+        elif data == 'Пожаловаться':
+            admin_report_menu = InlineKeyboardMarkup()
+            with db.connection:
+                admin_id = db.connection.execute(f"""SELECT tg_id FROM admin""").fetchall()
+            if type(admin_id) == tuple:
+                admin_id = [admin_id]
+            for admin in admin_id:
+                admin_report_menu.add(InlineKeyboardButton(str(admin[0]), callback_data='C' + str(admin[0])))
+            bot.edit_message_text(f'Выберите администратора', call.message.chat.id, call.message.message_id,
+                                  reply_markup=admin_report_menu)
+        else:
+            bot.edit_message_text(user_info[data], call.message.chat.id, call.message.message_id, reply_markup=menu_2)
     elif flag == 'B':
-        bot.edit_message_text("Какой-то текст", call.message.chat.id, call.message.message_id, reply_markup=menu_1)
+        bot.edit_message_text("Меню пользователя", call.message.chat.id, call.message.message_id, reply_markup=menu_1)
+    elif flag == 'C':
+        msg = bot.send_message(call.message.chat.id, 'Введите отзыв')
+        bot.register_next_step_handler(msg, strike, call.message.chat.id, data, 'user')
 
     # elif flag == 'D':
     #     msg = bot.edit_message_text('Введите отзыв', call.message.chat.id, call.message.message_id)
