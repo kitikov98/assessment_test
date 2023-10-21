@@ -44,7 +44,7 @@ for item in user_menu:
 main_menu = 'Назад в меню'
 menu_2 = InlineKeyboardMarkup()
 menu_2.add(InlineKeyboardButton(main_menu, callback_data='B' + main_menu))
-
+auto_bid=[]
 
 def discription_text(list1):
     text = f"""
@@ -82,6 +82,7 @@ def start_admin_panel(message):
         lot_menu.add(InlineKeyboardButton('time', callback_data='t' + str(message.text.split(" ")[1])),
                      InlineKeyboardButton('описание', callback_data='i'),
                      InlineKeyboardButton('документы', callback_data='d' + str(message.text.split(" ")[1])))
+        lot_menu.add(InlineKeyboardButton('автоставка', callback_data='U' + str(message.text.split(" ")[1])))
         lot_menu.add(InlineKeyboardButton('30 ₩', callback_data='p' + str(message.text.split(" ")[1]) + '.30'),
                      InlineKeyboardButton('50 ₩', callback_data='p' + str(message.text.split(" ")[1]) + '.50'),
                      InlineKeyboardButton('150 ₩', callback_data='p' + str(message.text.split(" ")[1]) + '.150'))
@@ -89,6 +90,32 @@ def start_admin_panel(message):
                        reply_markup=lot_menu)
     else:
         bot.send_message(message.chat.id, 'Меню пользователя', reply_markup=menu_1)
+
+def stop_handler(message):
+    bot.clear_step_handler_by_chat_id(chat_id=message.chat.id)
+    auto_bid.clear()
+    bot.send_message(message.chat.id, 'Создание автоставки остановлено')
+
+def auto_step(message):
+    if message.text == '/stop':
+        stop_handler(message)
+    else:
+        auto_bid.append(message.text)
+        msg = bot.send_message(message.chat.id, 'Введите шаг автоставки')
+        bot.register_next_step_handler(msg, auto_fin)
+
+
+
+def auto_fin(message):
+    if message.text == '/stop':
+        stop_handler(message)
+    else:
+        auto_bid.append(message.text)
+        auto_bid.append(message.chat.id)
+        bot.send_message(message.chat.id, 'Авто ставка зарегистрирована')
+        with db.connection:
+            db.connection.execute(f'INSERT INTO auto_bids (lot_id, max_value, step, user_id)  VALUES(?,?,?,?)', auto_bid)
+        auto_bid.clear()
 
 
 @bot.callback_query_handler(func=lambda call: True)
@@ -169,6 +196,18 @@ def query_handler(call):
     elif flag == 'C':
         msg = bot.send_message(call.message.chat.id, 'Введите отзыв')
         bot.register_next_step_handler(msg, strike, call.message.chat.id, data, 'user')
+
+    elif flag == 'U':
+        with db.connection:
+            user_status = db.connection.execute(f'SELECT * FROM user').fetchone()
+        if int(user_status[2]) >= 500 or int(user_status[3]) >= 10 or int(user_status[4]) == 1:
+            with db.connection:
+                db.connection.execute(f'UPDATE user SET status_auto_bid=1 WHERE tg_id ={user_status[1]}')
+            msg = bot.send_message(call.message.chat.id, "Введите автоставку")
+            bot.register_next_step_handler(msg, auto_step)
+            auto_bid.append(data)
+        else:
+            bot.answer_callback_query(callback_query_id=call.id, text='Вы не обладаете такими правами')
 
     # elif flag == 'D':
     #     msg = bot.edit_message_text('Введите отзыв', call.message.chat.id, call.message.message_id)

@@ -23,7 +23,7 @@ class Database:
         file_name TEXT, time_start DATETIME, time_finish DATETIME, type TEXT,
         status text, pic BLOB, message_id INTEGER)''')
 
-        self.connection.execute('''CREATE TABLE IF NOT EXISTS admin (id INTEGER PRIMARY KEY, tg_id INTEGER,
+        self.connection.execute('''CREATE TABLE IF NOT EXISTS admin (id INTEGER PRIMARY KEY, tg_id INTEGER UNIQUE,
          rights INTEGER, balance INTEGER, strike_status INTEGER)''')
 
         self.connection.execute('''CREATE TABLE IF NOT EXISTS reports (id INTEGER PRIMARY KEY, admin_id INTEGER,
@@ -34,6 +34,9 @@ class Database:
 
         self.connection.execute('''CREATE TABLE IF NOT EXISTS bids (id INTEGER PRIMARY KEY, lot_id INTEGER,
                          bid INTEGER, user_id INTEGER)''')
+
+        self.connection.execute('''CREATE TABLE IF NOT EXISTS auto_bids (id INTEGER PRIMARY KEY, lot_id INTEGER,
+                                 max_value INTEGER, step INTEGER, user_id INTEGER)''')
 
         self.connection.commit()
 

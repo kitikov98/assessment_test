@@ -21,7 +21,7 @@ token = text['admin_panel']
 
 bot = telebot.TeleBot(token)
 
-menu_1 = ["Создать_лот", "Баланс", "Удаление лота", "Пожаловаться"]
+menu_1 = ["Создать_лот", "Баланс", "Удаление лота", "Пожаловаться", "История торгов"]
 menu_2 = ["Одобрение лота", "Жалобы"]
 menu_3 = [*menu_1, *menu_2, 'Изменение админов', 'Начисление баланса']
 # Клавиатура для администраторов
@@ -56,6 +56,7 @@ def lots_bid():
             InlineKeyboardButton(text="учавствовать", url=f"https://t.me/kitikov98_study_bot?start={bid[1]}"))
         menu_send.add(InlineKeyboardButton('время', callback_data='t' + '0'),
                       InlineKeyboardButton('info', callback_data='i' + '0'))
+        menu_send.add(InlineKeyboardButton('автоставка', callback_data='U' + '0'))
         bot.edit_message_caption(discription_text(lot) + f'\n Максимальная ставка {bid[2]} \nПользователем {tg_id}',
                                  chat_id=tg_group, message_id=lot[12], reply_markup=menu_send)
     print('done')
@@ -108,6 +109,7 @@ def start_auc():
                     InlineKeyboardButton(text="учавствовать", url=f"https://t.me/kitikov98_study_bot?start={lot[0]}"))
                 menu_send.add(InlineKeyboardButton('время', callback_data='t' + '0'),
                               InlineKeyboardButton('info', callback_data='i' + '0'))
+                menu_send.add(InlineKeyboardButton('автоставка', callback_data='U' + '0'))
                 msg = bot.send_photo(tg_group, pict, caption=text_1, reply_markup=menu_send)
                 print(msg)
                 with db.connection:
@@ -423,7 +425,6 @@ def query_handler(call):
             bot.edit_message_text('меню одменов', call.message.chat.id,
                                   call.message.message_id, reply_markup=adm_menu)
 
-
         elif data[-1:] == "3":  # меняем на первый ранк
             admin_id = data[:-1]
             with db.connection:
@@ -589,6 +590,7 @@ def query_handler(call):
                     InlineKeyboardButton(text="учавствовать", url=f"https://t.me/kitikov98_study_bot?start={lot_id}"))
                 menu_send.add(InlineKeyboardButton('время', callback_data='t' + '0'),
                               InlineKeyboardButton('info', callback_data='i' + '0'))
+                menu_send.add(InlineKeyboardButton('автоставка', callback_data='U' + '0'))
                 msg = bot.send_photo(tg_group, pict, caption=text_1, reply_markup=menu_send)
                 print(msg)
                 with db.connection:
@@ -878,6 +880,19 @@ def query_handler(call):
             report_menu.add(InlineKeyboardButton('back', callback_data='Bback'))
             bot.edit_message_text("Нет отзывов", call.message.chat.id,
                                   call.message.message_id, reply_markup=report_menu)
+
+    if data == 'История торгов':
+        history = InlineKeyboardMarkup()
+        history.add(InlineKeyboardButton('back', callback_data='Bback'))
+        with db.connection:
+            lots = db.connection.execute(f'SELECT * FROM lots').fetchall()
+        if type(lots) == tuple:
+            lots = [lots]
+        text_h = ''
+        for lot in lots:
+            text_h += f'№ лота {lot[0]} стоимостью {lot[1]} имеет статус {lot[10]}\n'
+        bot.edit_message_text(text_h, call.message.chat.id,
+                              call.message.message_id, reply_markup=history)
 
     if data == 'Баланс':
         with db.connection:
